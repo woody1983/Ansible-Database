@@ -1,0 +1,55 @@
+--- # Database Deployment Example
+- hosts: appserver
+  user: ansible
+  sudo: yes
+  connection: ssh
+  gather_facts: yes
+  vars:
+    dbserver_pkg: mariadb-server
+    dbclient_pkg: mariadb
+    dbserver_fqdn: woody-hsu19831.mylabserver.com
+    dbsinstalldir: /var/lib
+    dbinstancename: MyDBTest
+    dbdistribution: RedHat
+    dbversion: 5.5.44
+  tasks:
+  - name: Install all the MariaDB Packages (Client and Server)
+    yum: pkg={{ item }} state=latest
+    with_items:
+    - "{{ dbserver_pkg }}"
+    - "{{ dbclient_pkg }}"
+    notify:
+    - StartDBService
+    - RunSecureInstallPause
+    - RestartDBService
+    - CopyBkupFile
+    - CreateRemoteDB
+    - DisplayCreationResults
+    - RestoreRemoteDB
+    - TestDBResults
+    - ShowDBResults
+  - name: Add a Backup CRON job to run every day at midnight
+    cron: name="DBBackup" minute="0" hour="0" job="mysqldump -u root -ppassword123 --databases MyDBTest > dbbkup.sql"
+  handlers:
+  - name: StartDBService
+    service: name={{ dbclient_pkg }} state=started
+  - name: RunSecureInstallPause
+    pause: prompt="Please run mysql_secure_installation binary and press ENTER - Playbook will restart DB Service ..."
+  - name: RestartDBService
+    service: name={{ dbclient_pkg }} state=restarted
+  - name: CopyBkupFile
+    copy: src=files/mysqlbkup.sql dest={{ dbsinstalldir }}/mysqlbkup.sql owner=root group=root mode=755
+  - name: CreateRemoteDB
+    shell: mysqladmin -uroot -ppassword123 create {{ dbinstancename }}
+    register: result
+  - name: DisplayCreationResults
+    debug: var=result
+  - name: RestoreRemoteDB
+    shell: mysql -u root -ppassword123 {{ dbinstancename }} < {{ dbsinstalldir }}/mysqlbkup.sql
+    register: result
+  - name: TestDBResults
+    shell: mysql -u root -ppassword123 -e 'SHOW DATABASES;'
+    register: mysqlresult
+  - name: ShowDBResults
+    debug: var=mysqlresult
+
